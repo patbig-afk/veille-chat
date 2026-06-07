@@ -296,7 +296,20 @@
 </footer>
 
 <script>
-  const API = 'https://veille-rag-701907145552.europe-west9.run.app/ask';
+  const API_ASK    = 'https://veille-rag-701907145552.europe-west9.run.app/ask';
+  const API_LATEST = 'https://veille-rag-701907145552.europe-west9.run.app/get_latest';
+
+  const LATEST_PATTERNS = [
+    /derni[eè]re?s?\s+(pépites?|épisodes?|analyses?|entrées?)/i,
+    /liste\s+(des\s+)?(derni[eè]re?s?\s+)?(pépites?|épisodes?)/i,
+    /quoi\s+de\s+neuf/i,
+    /nouveaut[eé]s?/i,
+    /dernière\s+mise\s+à\s+jour/i,
+  ];
+
+  function isLatestQuery(q) {
+    return LATEST_PATTERNS.some(p => p.test(q));
+  }
 
   const messagesEl = document.getElementById('messages');
   const inputEl = document.getElementById('input');
@@ -385,20 +398,42 @@
     const typingMsg = appendTyping();
 
     try {
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question })
-      });
+      let answer, sources;
 
-      typingMsg.remove();
+      if (isLatestQuery(question)) {
+        const n = (question.match(/\d+/) || ['5'])[0];
+        const res = await fetch(`${API_LATEST}?n=${n}`);
+        typingMsg.remove();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.latest && data.latest.length > 0) {
+          answer = data.latest.map((e, i) =>
+            `${i + 1}. ${e.title}\n   ${e.source} · ${new Date(e.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`
+          ).join('\n\n');
+          sources = data.latest.map(e => ({ title: e.title, source: e.source, date: e.date }));
+        } else {
+          answer = 'Aucune pépite trouvée dans la base.';
+          sources = [];
+        }
+      } else {
+        const res = await fetch(API_ASK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question })
+        });
+        typingMsg.remove();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.status === 'success' && data.answer) {
+          answer = data.answer.trim();
+          sources = data.sources;
+        } else {
+          answer = null;
+        }
+      }
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-
-      if (data.status === 'success' && data.answer) {
-        appendMessage('assistant', data.answer.trim(), data.sources);
+      if (answer) {
+        appendMessage('assistant', answer, sources);
       } else {
         appendError('Aucune réponse trouvée dans la base.');
       }
