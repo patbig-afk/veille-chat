@@ -316,6 +316,8 @@
   const sendBtn = document.getElementById('send');
   const emptyEl = document.getElementById('empty');
 
+  const conversationHistory = [];
+
   function askSuggestion(el) {
     inputEl.value = el.textContent;
     send();
@@ -419,7 +421,7 @@
         const res = await fetch(API_ASK, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question })
+          body: JSON.stringify({ question, history: conversationHistory.slice(-6) })
         });
         typingMsg.remove();
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -433,6 +435,8 @@
       }
 
       if (answer) {
+        conversationHistory.push({ role: 'user', content: question });
+        conversationHistory.push({ role: 'assistant', content: answer });
         appendMessage('assistant', answer, sources);
       } else {
         appendError('Aucune réponse trouvée dans la base.');
